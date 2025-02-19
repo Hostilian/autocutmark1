@@ -22,43 +22,32 @@ def is_dark_frame(frame, threshold=30):
     return cv2.mean(frame)[0] < threshold
 
 def analyze_scene_content(args):
-    """Analyze scene content for interesting/funny moments."""
+    """Analyze scene content with minimal processing."""
     video_path, start_time, duration = args
     try:
         video = cv2.VideoCapture(video_path)
         video.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
 
+        # Only analyze 5 frames per clip instead of continuous analysis
+        frames_to_check = 5
         frame_scores = []
-        fps = video.get(cv2.CAP_PROP_FPS)
-        sample_rate = 10  # Sample every 10 frames for speed
-        frames_to_check = int(duration * fps / sample_rate)
-        prev_frame = None
 
         for _ in range(frames_to_check):
-            video.set(cv2.CAP_PROP_POS_FRAMES, video.get(cv2.CAP_PROP_POS_FRAMES) + sample_rate)
             ret, frame = video.read()
             if not ret:
                 break
 
+            # Simple brightness and edge detection (much faster)
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            brightness = np.mean(gray)
+            edges = cv2.Canny(gray, 100, 200)
+            edge_score = np.mean(edges)
 
-            if prev_frame is not None:
-                # Motion detection (for action/funny physical scenes)
-                motion_score = cv2.norm(cv2.absdiff(gray, prev_frame))
+            score = brightness * 0.4 + edge_score * 0.6
+            frame_scores.append(score)
 
-                # Face detection (for dialogue scenes)
-                face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-                faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-                face_score = len(faces) * 1000  # Weight face detection heavily
-
-                # Scene complexity (for interesting visual moments)
-                edges = cv2.Canny(gray, 100, 200)
-                edge_score = np.mean(edges)
-
-                total_score = motion_score * 0.4 + face_score * 0.4 + edge_score * 0.2
-                frame_scores.append(total_score)
-
-            prev_frame = gray
+            # Skip frames to speed up analysis
+            video.set(cv2.CAP_PROP_POS_FRAMES, video.get(cv2.CAP_PROP_POS_FRAMES) + 30)
 
         video.release()
         return (start_time, np.mean(frame_scores) if frame_scores else 0)
@@ -67,64 +56,54 @@ def analyze_scene_content(args):
         return (start_time, 0)
 
 def split_video_fixed_duration(video_path, clip_duration):
-    """Split video into 3 interesting clips."""
+    """Split video into 3 clips with high quality."""
     try:
         print("Opening video file...")
         video = cv2.VideoCapture(video_path)
         if not video.isOpened():
             raise Exception("Could not open video file")
 
-        fps = video.get(cv2.CAP_PROP_FPS)
-        total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        total_duration = total_frames / fps
-
+        total_duration = video.get(cv2.CAP_PROP_FRAME_COUNT) / video.get(cv2.CAP_PROP_FPS)
         print(f"Video duration: {total_duration:.2f} seconds")
 
-        # Skip intro
-        start_offset = 60  # Skip first minute
-        end_offset = 60    # Skip last minute
-        usable_duration = total_duration - start_offset - end_offset
+        # Sample fewer points (every 60 seconds instead of 30)
+        start_offset = 60
+        end_offset = 60
+        sample_points = [(video_path, time, clip_duration)
+                        for time in range(int(start_offset),
+                                        int(total_duration - end_offset - clip_duration),
+                                        60)]
 
-        # Sample points every 30 seconds
-        sample_points = [(video_path, time, clip_duration) for time in range(int(start_offset), int(total_duration - end_offset - clip_duration), 30)]
-
-        # Analyze scenes in parallel
-        with Pool() as pool:
-            results = pool.map(analyze_scene_content, sample_points)
+        print("Analyzing scenes (this may take a few minutes)...")
+        # Use smaller process pool to avoid memory issues
+        with Pool(processes=4) as pool:
+            results = pool.map(analyze_scene_content, sample_points[:30])  # Limit analysis to first 30 points
 
         # Sort by score and take top 3
         results.sort(key=lambda x: x[1], reverse=True)
         best_points = results[:3]
-        best_points.sort(key=lambda x: x[0])  # Sort by time for chronological order
+        best_points.sort(key=lambda x: x[0])
 
         clip_paths = []
         for i, (start_time, score) in enumerate(best_points):
             output_path = f"clip_{i}.mp4"
             print(f"\nExtracting clip {i+1}/3 from {start_time:.2f}s")
 
-            # Modified FFmpeg command to handle NAL unit errors
-            cmd = (f'ffmpeg -y -hwaccel auto -i "{video_path}" -ss {start_time} -t {clip_duration} '
-                  f'-c:v libx264 -preset ultrafast -crf 23 '
-                  f'-c:a aac -strict experimental "{output_path}"')
+            # High quality FFmpeg command
+            cmd = (
+                f'ffmpeg -y -ss {start_time} -i "{video_path}" -t {clip_duration} '
+                f'-c:v libx264 -preset medium -crf 18 -profile:v high '
+                f'-c:a aac -b:a 192k "{output_path}"'
+            )
 
-            print(f"Running FFmpeg command: {cmd}")
+            print(f"Running FFmpeg command...")
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-
+            
             if result.returncode == 0:
                 print(f"Created {output_path}")
                 clip_paths.append(output_path)
             else:
                 print(f"Error: {result.stderr}")
-                # Fallback command using demuxer-level seeking
-                cmd = (f'ffmpeg -y -ss {start_time} -i "{video_path}" -t {clip_duration} '
-                      f'-avoid_negative_ts 1 -c copy "{output_path}"')
-                print("Retrying with demuxer-level seeking...")
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-                if result.returncode == 0:
-                    print(f"Created {output_path}")
-                    clip_paths.append(output_path)
-                else:
-                    print(f"Error on retry: {result.stderr}")
 
         video.release()
         return clip_paths
@@ -137,82 +116,124 @@ def split_video_fixed_duration(video_path, clip_duration):
 # ---------- SUBTITLE EXTRACTION & OVERLAY ----------
 
 def extract_subtitles_from_srt(srt_file):
-    """Extracts subtitles with timing from an SRT file."""
+    """Extracts subtitles with precise timing from an SRT file."""
     subtitles = []
     current_sub = {}
-    with open(srt_file, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
+    try:
+        with open(srt_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
 
-    for line in lines:
-        line = line.strip()
-        if '-->' in line:
-            times = line.split(' --> ')
-            current_sub['start'] = times[0].replace(',', '.')
-            current_sub['end'] = times[1].replace(',', '.')
-        elif line and not line.isdigit():
-            if 'text' not in current_sub:
-                current_sub['text'] = line
-            else:
-                current_sub['text'] += '\n' + line
-        elif not line and 'text' in current_sub:
-            subtitles.append(current_sub.copy())
-            current_sub = {}
+        for line in lines:
+            line = line.strip()
+            if '-->' in line:
+                try:
+                    times = line.split(' --> ')
+                    current_sub['start'] = times[0].strip()
+                    current_sub['end'] = times[1].strip()
+                except Exception as e:
+                    logging.error(f"Error parsing timecodes: {e}")
+                    continue
+            elif line and not line.isdigit():
+                if 'text' not in current_sub:
+                    current_sub['text'] = line
+                else:
+                    current_sub['text'] += '\n' + line
+            elif not line and 'text' in current_sub:
+                subtitles.append(current_sub.copy())
+                current_sub = {}
+
+    except Exception as e:
+        logging.error(f"Error reading SRT file: {e}")
+        return []
 
     return subtitles
 
 def extract_subtitles_for_clip(subtitles, clip_start, clip_duration):
-    """Extract subtitles that fall within the clip's time range."""
+    """Extract subtitles with precise timing alignment."""
     clip_subtitles = []
     clip_end = clip_start + clip_duration
 
     for sub in subtitles:
-        # Convert subtitle times to seconds
-        sub_start = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['start'].split(':'))))
-        sub_end = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['end'].split(':'))))
+        try:
+            # Parse original timecodes more precisely
+            start_parts = sub['start'].split(':')
+            end_parts = sub['end'].split(':')
+            
+            # Calculate precise timestamps in seconds
+            sub_start = (int(start_parts[0]) * 3600 + 
+                        int(start_parts[1]) * 60 + 
+                        float(start_parts[2].replace(',', '.')))
+            
+            sub_end = (int(end_parts[0]) * 3600 + 
+                      int(end_parts[1]) * 60 + 
+                      float(end_parts[2].replace(',', '.')))
 
-        # Check if subtitle overlaps with clip
-        if sub_end > clip_start and sub_start < clip_end:
-            # Adjust timing relative to clip start
-            adjusted_sub = sub.copy()
-            adjusted_sub['start'] = max(0, sub_start - clip_start)
-            adjusted_sub['end'] = min(clip_duration, sub_end - clip_start)
-            clip_subtitles.append(adjusted_sub)
+            # Check if subtitle overlaps with clip
+            if sub_end > clip_start and sub_start < clip_end:
+                adjusted_sub = sub.copy()
+                
+                # Adjust timing relative to clip start
+                adjusted_sub['start'] = max(0, sub_start - clip_start)
+                adjusted_sub['end'] = min(clip_duration, sub_end - clip_start)
+                
+                if adjusted_sub['end'] > adjusted_sub['start']:
+                    clip_subtitles.append(adjusted_sub)
+
+        except Exception as e:
+            logging.error(f"Error processing subtitle: {e}")
+            continue
 
     return clip_subtitles
 
 def overlay_subtitles(video_file, subtitles):
-    """Overlays subtitles with proper timing."""
+    """Overlay subtitles with precise timing using FFmpeg."""
     try:
-        video = mpy.VideoFileClip(video_file)
-        subtitle_clips = []
+        output_path = f"subtitled_{os.path.basename(video_file)}"
+        
+        # Create temporary SRT file
+        temp_srt = "temp_subtitles.srt"
+        with open(temp_srt, 'w', encoding='utf-8') as f:
+            for i, sub in enumerate(subtitles, 1):
+                start = format_timecode(sub['start'])
+                end = format_timecode(sub['end'])
+                f.write(f"{i}\n{start} --> {end}\n{sub['text']}\n\n")
 
-        for sub in subtitles:
-            # Convert time to seconds if it's not already
-            if isinstance(sub['start'], str):
-                start_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['start'].split(':'))))
-                end_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['end'].split(':'))))
-            else:
-                start_time = sub['start']
-                end_time = sub['end']
-
-            text_clip = mpy.TextClip(
-                sub['text'],
-                font='Arial',
-                fontsize=24,
-                color='white',
-                bg_color='black',
-                size=(video.w * 0.8, None),  # 80% of video width
-                method='caption'
-            )
-            text_clip = text_clip.set_position(('center', 'bottom'))
-            text_clip = text_clip.set_start(start_time).set_end(end_time)
-            subtitle_clips.append(text_clip)
-
-        final = mpy.CompositeVideoClip([video] + subtitle_clips)
-        return final
+        # Use FFmpeg to burn subtitles
+        cmd = (f'ffmpeg -y -i "{video_file}" -vf subtitles="{temp_srt}" '
+               f'-c:v libx264 -preset ultrafast -c:a copy "{output_path}"')
+        
+        print(f"Adding subtitles to {video_file}...")
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        
+        # Clean up temporary file
+        os.remove(temp_srt)
+        
+        if result.returncode == 0:
+            print(f"Successfully created {output_path}")
+            return output_path
+        else:
+            print(f"Error burning subtitles: {result.stderr}")
+            return video_file
+            
     except Exception as e:
         logging.error(f"Error in overlay_subtitles: {e}")
-        raise
+        return video_file
+
+def format_timecode(seconds):
+    """Convert seconds to SRT timecode format with millisecond precision."""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = seconds % 60
+    msecs = int((secs - int(secs)) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{int(secs):02d},{msecs:03d}"
+
+def format_ass_time(seconds):
+    """Convert seconds to ASS time format (h:mm:ss.cc)."""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = seconds % 60
+    centisecs = int((secs - int(secs)) * 100)
+    return f"{hours}:{minutes:02d}:{int(secs):02d}.{centisecs:02d}"
 
 # ---------- TITLE GENERATION ----------
 
@@ -310,35 +331,41 @@ def main(video_path, clip_duration, subtitle_file, api_key):
             print("Loading subtitles...")
             all_subtitles = extract_subtitles_from_srt(subtitle_file)
 
-        youtube = authenticate_youtube_api(api_key)
-
+        processed_clips = []
         for i, clip_path in enumerate(clip_paths):
-            print(f"Processing clip {i+1}/{len(clip_paths)}...")
+            print(f"\nProcessing clip {i+1}/{len(clip_paths)}...")
 
             if subtitle_file:
-                # Calculate clip start time relative to original video
-                clip_start = i * clip_duration  # Simplified; adjust based on your actual clip timing
-
-                # Extract subtitles for this specific clip
+                clip_start = i * clip_duration
                 clip_subtitles = extract_subtitles_for_clip(all_subtitles, clip_start, clip_duration)
 
                 if clip_subtitles:
                     print(f"Adding {len(clip_subtitles)} subtitles to clip...")
-                    final_clip = overlay_subtitles(clip_path, clip_subtitles)
-                    output_path = f"subtitled_clip_{i}.mp4"
-                    print(f"Saving subtitled clip to {output_path}...")
-                    final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
+                    output_path = overlay_subtitles(clip_path, clip_subtitles)
+                    processed_clips.append(output_path)
                 else:
                     print("No subtitles found for this clip segment")
-                    output_path = clip_path
+                    processed_clips.append(clip_path)
             else:
-                output_path = clip_path
+                processed_clips.append(clip_path)
 
-            # Upload the processed clip to YouTube
-            transcript = transcribe_video(output_path)
+        # Upload clips to YouTube
+        youtube = authenticate_youtube_api(api_key)
+        for i, clip_path in enumerate(processed_clips):
+            print(f"\nUploading clip {i+1}/{len(processed_clips)}...")
+            transcript = transcribe_video(clip_path)
             title = generate_title_with_gpt4(transcript, api_key)
             description = f"Auto-generated clip from video\nTranscript:\n{transcript}"
-            upload_to_youtube(youtube, output_path, title, description)
+            upload_to_youtube(youtube, clip_path, title, description)
+
+        # Clean up temporary files
+        for path in clip_paths + [p for p in processed_clips if p not in clip_paths]:
+            try:
+                os.remove(path)
+                print(f"Cleaned up {path}")
+            except:
+                pass
+
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         print("An error occurred. Check the log for details.")
