@@ -1,0 +1,75 @@
+name: Upload YouTube Shorts
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  upload-shorts:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+
+    - name: Cache pip
+      uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        pip install -r requirements.txt
+
+    - name: Lint code with flake8
+      run: |
+        source venv/bin/activate
+        pip install flake8
+        flake8 .
+
+    - name: Run unit tests
+      run: |
+        source venv/bin/activate
+        pip install pytest
+        pytest
+
+    - name: Run video processing script
+      env:
+        API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      run: |
+        source venv/bin/activate
+        python video_processing.py --video_path "D:/MW_TVS/Snatch (2000) [BluRay] [1080p] [YTS.AM]/Snatch.2000.1080p.BluRay.x264-[YTS.AM].mp4" --clip_duration 50 --api_key $API_KEY
+
+    - name: Upload logs
+      if: failure()
+      uses: actions/upload-artifact@v2
+      with:
+        name: logs
+        path: video_processing.log
+
+    - name: Notify on failure
+      if: failure()
+      uses: appleboy/telegram-action@v0.2.0
+      with:
+        to: ${{ secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        message: "The YouTube Shorts upload workflow has failed. Check the logs for details."
+
+    - name: Notify on success
+      if: success()
+      uses: appleboy/telegram-action@v0.2.0
+      with:
+        to: ${{ secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        message: "The YouTube Shorts upload workflow has completed successfully."
