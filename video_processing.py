@@ -185,40 +185,6 @@ def extract_subtitles_for_clip(subtitles, clip_start, clip_duration):
 
     return clip_subtitles
 
-def overlay_subtitles(video_file, subtitles):
-    """Overlay subtitles with precise timing using FFmpeg."""
-    try:
-        output_path = f"subtitled_{os.path.basename(video_file)}"
-        
-        # Create temporary SRT file
-        temp_srt = "temp_subtitles.srt"
-        with open(temp_srt, 'w', encoding='utf-8') as f:
-            for i, sub in enumerate(subtitles, 1):
-                start = format_timecode(sub['start'])
-                end = format_timecode(sub['end'])
-                f.write(f"{i}\n{start} --> {end}\n{sub['text']}\n\n")
-
-        # Use FFmpeg to burn subtitles
-        cmd = (f'ffmpeg -y -i "{video_file}" -vf subtitles="{temp_srt}" '
-               f'-c:v libx264 -preset ultrafast -c:a copy "{output_path}"')
-        
-        print(f"Adding subtitles to {video_file}...")
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        
-        # Clean up temporary file
-        os.remove(temp_srt)
-        
-        if result.returncode == 0:
-            print(f"Successfully created {output_path}")
-            return output_path
-        else:
-            print(f"Error burning subtitles: {result.stderr}")
-            return video_file
-            
-    except Exception as e:
-        logging.error(f"Error in overlay_subtitles: {e}")
-        return video_file
-
 def format_timecode(seconds):
     """Convert seconds to SRT timecode format with millisecond precision."""
     hours = int(seconds // 3600)
@@ -226,6 +192,42 @@ def format_timecode(seconds):
     secs = seconds % 60
     msecs = int((secs - int(secs)) * 1000)
     return f"{hours:02d}:{minutes:02d}:{int(secs):02d},{msecs:03d}"
+
+def overlay_subtitles(video_file, subtitles):
+    """Overlays subtitles using MoviePy with precise timing."""
+    try:
+        video = mpy.VideoFileClip(video_file)
+        subtitle_clips = []
+
+        for sub in subtitles:
+            # Convert time to seconds if it's not already
+            if isinstance(sub['start'], str):
+                start_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['start'].split(':'))))
+                end_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['end'].split(':'))))
+            else:
+                start_time = sub['start']
+                end_time = sub['end']
+
+            text_clip = mpy.TextClip(
+                sub['text'],
+                font='Arial',
+                fontsize=24,
+                color='white',
+                bg_color='black',
+                size=(video.w * 0.8, None),  # 80% of video width
+                method='caption'
+            )
+            text_clip = text_clip.set_position(('center', 'bottom'))
+            text_clip = text_clip.set_start(start_time).set_end(end_time)
+            subtitle_clips.append(text_clip)
+
+        final = mpy.CompositeVideoClip([video] + subtitle_clips)
+        output_path = f"subtitled_{os.path.basename(video_file)}"
+        final.write_videofile(output_path, codec="libx264", audio_codec="aac")
+        return output_path
+    except Exception as e:
+        logging.error(f"Error in overlay_subtitles: {e}")
+        raise
 
 def format_ass_time(seconds):
     """Convert seconds to ASS time format (h:mm:ss.cc)."""
