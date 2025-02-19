@@ -10,8 +10,10 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
 import openai
+import numpy as np
+from multiprocessing import Pool
 
-print(os.environ['PATH'])
+# print(os.environ['PATH'])  # Remove or comment out this line
 
 # ---------- VIDEO SPLITTING ----------
 
@@ -19,100 +21,118 @@ def is_dark_frame(frame, threshold=30):
     """Check if frame is too dark based on average pixel intensity."""
     return cv2.mean(frame)[0] < threshold
 
-def analyze_scene_content(video_path, start_time, duration):
-    """Analyze scene content for interesting moments."""
-    video = cv2.VideoCapture(video_path)
-    video.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
+def analyze_scene_content(args):
+    """Analyze scene content for interesting/funny moments."""
+    video_path, start_time, duration = args
+    try:
+        video = cv2.VideoCapture(video_path)
+        video.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
 
-    frame_scores = []
-    fps = video.get(cv2.CAP_PROP_FPS)
-    frames_to_check = int(duration * fps)
+        frame_scores = []
+        fps = video.get(cv2.CAP_PROP_FPS)
+        sample_rate = 10  # Sample every 10 frames for speed
+        frames_to_check = int(duration * fps / sample_rate)
+        prev_frame = None
 
-    for _ in range(frames_to_check):
-        ret, frame = video.read()
-        if not ret:
-            break
+        for _ in range(frames_to_check):
+            video.set(cv2.CAP_PROP_POS_FRAMES, video.get(cv2.CAP_PROP_POS_FRAMES) + sample_rate)
+            ret, frame = video.read()
+            if not ret:
+                break
 
-        # Calculate scene score based on multiple factors
-        motion_score = cv2.norm(cv2.absdiff(frame, prev_frame)) if 'prev_frame' in locals() else 0
-        brightness_score = cv2.mean(frame)[0]
-        contrast_score = frame.std()
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        frame_scores.append(motion_score + brightness_score + contrast_score)
-        prev_frame = frame
+            if prev_frame is not None:
+                # Motion detection (for action/funny physical scenes)
+                motion_score = cv2.norm(cv2.absdiff(gray, prev_frame))
 
-    video.release()
-    return sum(frame_scores) / len(frame_scores) if frame_scores else 0
+                # Face detection (for dialogue scenes)
+                face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+                faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+                face_score = len(faces) * 1000  # Weight face detection heavily
+
+                # Scene complexity (for interesting visual moments)
+                edges = cv2.Canny(gray, 100, 200)
+                edge_score = np.mean(edges)
+
+                total_score = motion_score * 0.4 + face_score * 0.4 + edge_score * 0.2
+                frame_scores.append(total_score)
+
+            prev_frame = gray
+
+        video.release()
+        return (start_time, np.mean(frame_scores) if frame_scores else 0)
+    except Exception as e:
+        logging.error(f"Error in analyze_scene_content: {e}")
+        return (start_time, 0)
 
 def split_video_fixed_duration(video_path, clip_duration):
-    """Split video into 3 random clips."""
-    video = cv2.VideoCapture(video_path)
-    fps = video.get(cv2.CAP_PROP_FPS)
-    frame_count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-    clip_length_frames = int(clip_duration * fps)
+    """Split video into 3 interesting clips."""
+    try:
+        print("Opening video file...")
+        video = cv2.VideoCapture(video_path)
+        if not video.isOpened():
+            raise Exception("Could not open video file")
 
-    # Skip dark intro
-    dark_frames = 0
-    while True:
-        ret, frame = video.read()
-        if not ret or not is_dark_frame(frame):
-            break
-        dark_frames += 1
+        fps = video.get(cv2.CAP_PROP_FPS)
+        total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        total_duration = total_frames / fps
 
-    start_time = dark_frames / fps
-    print(f"Skipped {start_time:.2f} seconds of dark intro")
+        print(f"Video duration: {total_duration:.2f} seconds")
 
-    # Calculate remaining duration
-    remaining_duration = (frame_count - dark_frames) / fps
+        # Skip intro
+        start_offset = 60  # Skip first minute
+        end_offset = 60    # Skip last minute
+        usable_duration = total_duration - start_offset - end_offset
 
-    # Set number of clips to 3
-    num_clips = 3
+        # Sample points every 30 seconds
+        sample_points = [(video_path, time, clip_duration) for time in range(int(start_offset), int(total_duration - end_offset - clip_duration), 30)]
 
-    # Generate 3 random start times (ensuring clips don't overlap)
-    import random
-    potential_clips = []
-    for i in range(num_clips):
-        clip_start = start_time + (i * clip_duration)
-        score = analyze_scene_content(video_path, clip_start, clip_duration)
-        potential_clips.append((clip_start, score))
+        # Analyze scenes in parallel
+        with Pool() as pool:
+            results = pool.map(analyze_scene_content, sample_points)
 
-    if len(potential_clips) < 3:
-        print("Warning: Video too short for 3 clips")
-        random_starts = [clip[0] for clip in potential_clips]
-    else:
-        random_starts = [clip[0] for clip in sorted(potential_clips, key=lambda x: x[1], reverse=True)[:3]]
-    random_starts.sort()  # Keep chronological order
+        # Sort by score and take top 3
+        results.sort(key=lambda x: x[1], reverse=True)
+        best_points = results[:3]
+        best_points.sort(key=lambda x: x[0])  # Sort by time for chronological order
 
-    # Generate clips
-    clip_paths = []
-    for i, clip_start in enumerate(random_starts):
-        clip_end = clip_start + clip_duration
-        output_path = f"clip_{i}.mp4"
-        cmd = f'ffmpeg -y -i "{video_path}" -ss {clip_start} -to {clip_end} -c copy "{output_path}"'
-        subprocess.call(cmd, shell=True)
-        clip_paths.append(output_path)
+        clip_paths = []
+        for i, (start_time, score) in enumerate(best_points):
+            output_path = f"clip_{i}.mp4"
+            print(f"\nExtracting clip {i+1}/3 from {start_time:.2f}s")
 
-    video.release()
-    return clip_paths
+            # Modified FFmpeg command to handle NAL unit errors
+            cmd = (f'ffmpeg -y -hwaccel auto -i "{video_path}" -ss {start_time} -t {clip_duration} '
+                  f'-c:v libx264 -preset ultrafast -crf 23 '
+                  f'-c:a aac -strict experimental "{output_path}"')
 
-def split_video_scene_detection(video_path, threshold=30):
-    """
-    Splits the video into scenes using PySceneDetect.
-    Note: This is a simplified example.
-    """
-    # Detect scenes using PySceneDetect's command line interface or API
-    # For simplicity, we assume a function 'detect_scenes' returns a list of (start, end) times in seconds.
-    scene_list = []  # Replace with actual scene detection code or API call
-    # For demonstration, let’s assume one scene covering the entire video:
-    video = mpy.VideoFileClip(video_path)
-    scene_list.append((0, video.duration))
-    clip_paths = []
-    for i, (start_time, end_time) in enumerate(scene_list):
-        output_path = f"scene_{i}.mp4"
-        cmd = f"ffmpeg -y -i \"{video_path}\" -ss {start_time} -to {end_time} -c copy \"{output_path}\""
-        subprocess.call(cmd, shell=True)
-        clip_paths.append(output_path)
-    return clip_paths
+            print(f"Running FFmpeg command: {cmd}")
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+            if result.returncode == 0:
+                print(f"Created {output_path}")
+                clip_paths.append(output_path)
+            else:
+                print(f"Error: {result.stderr}")
+                # Fallback command using demuxer-level seeking
+                cmd = (f'ffmpeg -y -ss {start_time} -i "{video_path}" -t {clip_duration} '
+                      f'-avoid_negative_ts 1 -c copy "{output_path}"')
+                print("Retrying with demuxer-level seeking...")
+                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                if result.returncode == 0:
+                    print(f"Created {output_path}")
+                    clip_paths.append(output_path)
+                else:
+                    print(f"Error on retry: {result.stderr}")
+
+        video.release()
+        return clip_paths
+
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        logging.error(f"Error: {str(e)}", exc_info=True)
+        raise
 
 # ---------- SUBTITLE EXTRACTION & OVERLAY ----------
 
@@ -331,6 +351,6 @@ if __name__ == "__main__":
                        help="Duration (in seconds) for fixed clip splitting. Set to 0 to use scene detection.")
     parser.add_argument("--subtitle_file", help="Path to the subtitle SRT file", default=None)
     parser.add_argument("--api_key", help="API key for GPT-4 title generation and YouTube upload", required=True)
-    args = parser.parse_args()
 
+    args = parser.parse_args()
     main(args.video_path, args.clip_duration, args.subtitle_file, args.api_key)
