@@ -15,26 +15,83 @@ print(os.environ['PATH'])
 
 # ---------- VIDEO SPLITTING ----------
 
+def is_dark_frame(frame, threshold=30):
+    """Check if frame is too dark based on average pixel intensity."""
+    return cv2.mean(frame)[0] < threshold
+
+def analyze_scene_content(video_path, start_time, duration):
+    """Analyze scene content for interesting moments."""
+    video = cv2.VideoCapture(video_path)
+    video.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
+
+    frame_scores = []
+    fps = video.get(cv2.CAP_PROP_FPS)
+    frames_to_check = int(duration * fps)
+
+    for _ in range(frames_to_check):
+        ret, frame = video.read()
+        if not ret:
+            break
+
+        # Calculate scene score based on multiple factors
+        motion_score = cv2.norm(cv2.absdiff(frame, prev_frame)) if 'prev_frame' in locals() else 0
+        brightness_score = cv2.mean(frame)[0]
+        contrast_score = frame.std()
+
+        frame_scores.append(motion_score + brightness_score + contrast_score)
+        prev_frame = frame
+
+    video.release()
+    return sum(frame_scores) / len(frame_scores) if frame_scores else 0
+
 def split_video_fixed_duration(video_path, clip_duration):
-    """
-    Splits the video into clips of fixed duration.
-    Uses FFmpeg via system command.
-    """
+    """Split video into 3 random clips."""
     video = cv2.VideoCapture(video_path)
     fps = video.get(cv2.CAP_PROP_FPS)
     frame_count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     clip_length_frames = int(clip_duration * fps)
-    num_clips = frame_count // clip_length_frames
 
-    clip_paths = []
+    # Skip dark intro
+    dark_frames = 0
+    while True:
+        ret, frame = video.read()
+        if not ret or not is_dark_frame(frame):
+            break
+        dark_frames += 1
+
+    start_time = dark_frames / fps
+    print(f"Skipped {start_time:.2f} seconds of dark intro")
+
+    # Calculate remaining duration
+    remaining_duration = (frame_count - dark_frames) / fps
+
+    # Set number of clips to 3
+    num_clips = 3
+
+    # Generate 3 random start times (ensuring clips don't overlap)
+    import random
+    potential_clips = []
     for i in range(num_clips):
-        start_time = i * clip_duration
-        end_time = (i + 1) * clip_duration
+        clip_start = start_time + (i * clip_duration)
+        score = analyze_scene_content(video_path, clip_start, clip_duration)
+        potential_clips.append((clip_start, score))
+
+    if len(potential_clips) < 3:
+        print("Warning: Video too short for 3 clips")
+        random_starts = [clip[0] for clip in potential_clips]
+    else:
+        random_starts = [clip[0] for clip in sorted(potential_clips, key=lambda x: x[1], reverse=True)[:3]]
+    random_starts.sort()  # Keep chronological order
+
+    # Generate clips
+    clip_paths = []
+    for i, clip_start in enumerate(random_starts):
+        clip_end = clip_start + clip_duration
         output_path = f"clip_{i}.mp4"
-        # Extract clip using FFmpeg
-        cmd = f"ffmpeg -y -i \"{video_path}\" -ss {start_time} -to {end_time} -c copy \"{output_path}\""
+        cmd = f'ffmpeg -y -i "{video_path}" -ss {clip_start} -to {clip_end} -c copy "{output_path}"'
         subprocess.call(cmd, shell=True)
         clip_paths.append(output_path)
+
     video.release()
     return clip_paths
 
@@ -60,24 +117,50 @@ def split_video_scene_detection(video_path, threshold=30):
 # ---------- SUBTITLE EXTRACTION & OVERLAY ----------
 
 def extract_subtitles_from_srt(srt_file):
-    """Extracts subtitles from an SRT file."""
+    """Extracts subtitles with timing from an SRT file."""
+    subtitles = []
+    current_sub = {}
     with open(srt_file, 'r', encoding='utf-8') as f:
-        subtitles = f.read()
+        lines = f.readlines()
+
+    for line in lines:
+        line = line.strip()
+        if '-->' in line:
+            times = line.split(' --> ')
+            current_sub['start'] = times[0].replace(',', '.')
+            current_sub['end'] = times[1].replace(',', '.')
+        elif line and not line.isdigit():
+            if 'text' not in current_sub:
+                current_sub['text'] = line
+            else:
+                current_sub['text'] += '\n' + line
+        elif not line and 'text' in current_sub:
+            subtitles.append(current_sub.copy())
+            current_sub = {}
+
     return subtitles
 
-def overlay_subtitles(video_file, subtitles, font='Arial', fontsize=24, color='white', position='bottom', animation=False):
-    """Overlays subtitles on the video clip using MoviePy."""
+def overlay_subtitles(video_file, subtitles):
+    """Overlays subtitles with proper timing."""
     video = mpy.VideoFileClip(video_file)
-    # Create a TextClip for subtitles (this example places the entire subtitle text over the video)
-    text = mpy.TextClip(subtitles, font=font, fontsize=fontsize, color=color, bg_color='black')
-    text = text.set_pos(position).set_duration(video.duration)
+    subtitle_clips = []
 
-    # Optional animated effects (placeholder - replace with actual effect if needed)
-    if animation:
-        # e.g., text_clip = text_clip.fx(your_animation_effect)
-        pass
+    for sub in subtitles:
+        start_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['start'].split(':'))))
+        end_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['end'].split(':'))))
 
-    final = mpy.CompositeVideoClip([video, text])
+        text_clip = mpy.TextClip(sub['text'],
+                                font='Arial',
+                                fontsize=24,
+                                color='white',
+                                bg_color='black',
+                                size=(video.w, None),
+                                method='caption')
+        text_clip = text_clip.set_position(('center', 'bottom'))
+        text_clip = text_clip.set_start(start_time).set_end(end_time)
+        subtitle_clips.append(text_clip)
+
+    final = mpy.CompositeVideoClip([video] + subtitle_clips)
     return final
 
 # ---------- TITLE GENERATION ----------
@@ -165,45 +248,31 @@ def check_ffmpeg():
 
 def main(video_path, clip_duration, subtitle_file, api_key):
     """Orchestrates the video processing pipeline."""
-    logging.basicConfig(filename='video_processing.log', level=logging.INFO,
-                        format='%(asctime)s - %(levelname)s - %(message)s')
     try:
-    # Check for FFmpeg first
         if not check_ffmpeg():
             return
 
-        # Step 1: Split video
-        if clip_duration > 0:
-            print("Splitting video by fixed duration...")
-            clip_paths = split_video_fixed_duration(video_path, clip_duration)
-        else:
-            print("Splitting video by scene detection...")
-            clip_paths = split_video_scene_detection(video_path)
+        print("Analyzing video content and splitting into interesting clips...")
+        clip_paths = split_video_fixed_duration(video_path, clip_duration)
 
-        # Step 2: Authenticate YouTube API
         youtube = authenticate_youtube_api(api_key)
 
-        # Process each clip
         for clip_path in clip_paths:
-            output_path = clip_path
-            # Step 3: Process subtitles if provided
             if subtitle_file:
-                print(f"Overlaying subtitles on {clip_path}...")
+                print(f"Processing subtitles for {clip_path}...")
                 subtitles = extract_subtitles_from_srt(subtitle_file)
                 final_clip = overlay_subtitles(clip_path, subtitles)
                 output_path = "subtitled_" + clip_path
                 final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
+            else:
+                output_path = clip_path
 
-            # Step 4: Generate title
-            print(f"Transcribing {clip_path} for title generation...")
-            transcript = transcribe_video(clip_path)
+            # Upload the processed clip to YouTube
+            transcript = transcribe_video(output_path)
             title = generate_title_with_gpt4(transcript, api_key)
-            print(f"Generated title: {title}")
+            description = f"Auto-generated clip from video\nTranscript:\n{transcript}"
+            upload_to_youtube(youtube, output_path, title, description)
 
-            # Step 5: Upload to YouTube
-            print(f"Uploading {output_path} to YouTube...")
-            upload_to_youtube(youtube, output_path, title, "Short clip from original video")
-            logging.info(f"Processed and uploaded {clip_path} with title: {title}")
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         print("An error occurred. Check the log for details.")
