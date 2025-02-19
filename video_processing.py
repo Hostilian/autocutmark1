@@ -168,9 +168,11 @@ def main(video_path, clip_duration, subtitle_file, api_key, client_secrets_file)
             print("Splitting video by scene detection...")
             clip_paths = split_video_scene_detection(video_path)
 
-        # Step 2: Authenticate YouTube API
-        print("Authenticating with YouTube API...")
-        youtube = authenticate_youtube_api(client_secrets_file)
+        # Step 2: Authenticate YouTube API if client_secrets_file is provided
+        youtube = None
+        if client_secrets_file:
+            print("Authenticating with YouTube API...")
+            youtube = authenticate_youtube_api(client_secrets_file)
 
         # Process each clip
         for clip_path in clip_paths:
@@ -192,10 +194,13 @@ def main(video_path, clip_duration, subtitle_file, api_key, client_secrets_file)
                 title = generate_title_heuristic(transcript)
             print(f"Generated title: {title}")
 
-            # Step 5: Upload to YouTube
-            print(f"Uploading {output_path} to YouTube...")
-            upload_to_youtube(youtube, output_path, title, "Short clip from original video")
-            logging.info(f"Processed and uploaded {clip_path} with title: {title}")
+            # Step 5: Upload to YouTube if authenticated
+            if youtube:
+                print(f"Uploading {output_path} to YouTube...")
+                upload_to_youtube(youtube, output_path, title, "Short clip from original video")
+                logging.info(f"Processed and uploaded {clip_path} with title: {title}")
+            else:
+                print(f"Skipping upload for {output_path} as YouTube authentication is not provided.")
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         print("An error occurred. Check the log for details.")
