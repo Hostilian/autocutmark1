@@ -140,28 +140,59 @@ def extract_subtitles_from_srt(srt_file):
 
     return subtitles
 
-def overlay_subtitles(video_file, subtitles):
-    """Overlays subtitles with proper timing."""
-    video = mpy.VideoFileClip(video_file)
-    subtitle_clips = []
+def extract_subtitles_for_clip(subtitles, clip_start, clip_duration):
+    """Extract subtitles that fall within the clip's time range."""
+    clip_subtitles = []
+    clip_end = clip_start + clip_duration
 
     for sub in subtitles:
-        start_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['start'].split(':'))))
-        end_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['end'].split(':'))))
+        # Convert subtitle times to seconds
+        sub_start = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['start'].split(':'))))
+        sub_end = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['end'].split(':'))))
 
-        text_clip = mpy.TextClip(sub['text'],
-                                font='Arial',
-                                fontsize=24,
-                                color='white',
-                                bg_color='black',
-                                size=(video.w, None),
-                                method='caption')
-        text_clip = text_clip.set_position(('center', 'bottom'))
-        text_clip = text_clip.set_start(start_time).set_end(end_time)
-        subtitle_clips.append(text_clip)
+        # Check if subtitle overlaps with clip
+        if sub_end > clip_start and sub_start < clip_end:
+            # Adjust timing relative to clip start
+            adjusted_sub = sub.copy()
+            adjusted_sub['start'] = max(0, sub_start - clip_start)
+            adjusted_sub['end'] = min(clip_duration, sub_end - clip_start)
+            clip_subtitles.append(adjusted_sub)
 
-    final = mpy.CompositeVideoClip([video] + subtitle_clips)
-    return final
+    return clip_subtitles
+
+def overlay_subtitles(video_file, subtitles):
+    """Overlays subtitles with proper timing."""
+    try:
+        video = mpy.VideoFileClip(video_file)
+        subtitle_clips = []
+
+        for sub in subtitles:
+            # Convert time to seconds if it's not already
+            if isinstance(sub['start'], str):
+                start_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['start'].split(':'))))
+                end_time = sum(float(x) * 60 ** i for i, x in enumerate(reversed(sub['end'].split(':'))))
+            else:
+                start_time = sub['start']
+                end_time = sub['end']
+
+            text_clip = mpy.TextClip(
+                sub['text'],
+                font='Arial',
+                fontsize=24,
+                color='white',
+                bg_color='black',
+                size=(video.w * 0.8, None),  # 80% of video width
+                method='caption'
+            )
+            text_clip = text_clip.set_position(('center', 'bottom'))
+            text_clip = text_clip.set_start(start_time).set_end(end_time)
+            subtitle_clips.append(text_clip)
+
+        final = mpy.CompositeVideoClip([video] + subtitle_clips)
+        return final
+    except Exception as e:
+        logging.error(f"Error in overlay_subtitles: {e}")
+        raise
 
 # ---------- TITLE GENERATION ----------
 
@@ -252,18 +283,34 @@ def main(video_path, clip_duration, subtitle_file, api_key):
         if not check_ffmpeg():
             return
 
-        print("Analyzing video content and splitting into interesting clips...")
+        print("Splitting video into clips...")
         clip_paths = split_video_fixed_duration(video_path, clip_duration)
+
+        if subtitle_file:
+            print("Loading subtitles...")
+            all_subtitles = extract_subtitles_from_srt(subtitle_file)
 
         youtube = authenticate_youtube_api(api_key)
 
-        for clip_path in clip_paths:
+        for i, clip_path in enumerate(clip_paths):
+            print(f"Processing clip {i+1}/{len(clip_paths)}...")
+
             if subtitle_file:
-                print(f"Processing subtitles for {clip_path}...")
-                subtitles = extract_subtitles_from_srt(subtitle_file)
-                final_clip = overlay_subtitles(clip_path, subtitles)
-                output_path = "subtitled_" + clip_path
-                final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
+                # Calculate clip start time relative to original video
+                clip_start = i * clip_duration  # Simplified; adjust based on your actual clip timing
+
+                # Extract subtitles for this specific clip
+                clip_subtitles = extract_subtitles_for_clip(all_subtitles, clip_start, clip_duration)
+
+                if clip_subtitles:
+                    print(f"Adding {len(clip_subtitles)} subtitles to clip...")
+                    final_clip = overlay_subtitles(clip_path, clip_subtitles)
+                    output_path = f"subtitled_clip_{i}.mp4"
+                    print(f"Saving subtitled clip to {output_path}...")
+                    final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
+                else:
+                    print("No subtitles found for this clip segment")
+                    output_path = clip_path
             else:
                 output_path = clip_path
 
@@ -272,18 +319,16 @@ def main(video_path, clip_duration, subtitle_file, api_key):
             title = generate_title_with_gpt4(transcript, api_key)
             description = f"Auto-generated clip from video\nTranscript:\n{transcript}"
             upload_to_youtube(youtube, output_path, title, description)
-
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         print("An error occurred. Check the log for details.")
 
 # ---------- ARGUMENT PARSING ----------
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Automated Video Processing and YouTube Upload")
     parser.add_argument("--video_path", required=True, help="Path to the input video file")
     parser.add_argument("--clip_duration", type=int, default=30,
-                        help="Duration (in seconds) for fixed clip splitting. Set to 0 to use scene detection.")
+                       help="Duration (in seconds) for fixed clip splitting. Set to 0 to use scene detection.")
     parser.add_argument("--subtitle_file", help="Path to the subtitle SRT file", default=None)
     parser.add_argument("--api_key", help="API key for GPT-4 title generation and YouTube upload", required=True)
     args = parser.parse_args()
