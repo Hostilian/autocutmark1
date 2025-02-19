@@ -38,3 +38,38 @@ Traceback (most recent call last):
     raise IOError(("MoviePy error: the file %s could not be found!\n"
 OSError: MoviePy error: the file clip_0.mp4 could not be found!
 Please check that you entered the correct path.
+2025-02-19 16:08:05,395 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-19 16:08:05,588 - ERROR - An error occurred: MoviePy Error: creation of None failed because of the following error:
+
+[WinError 2] The system cannot find the file specified.
+
+.This error can be due to the fact that ImageMagick is not installed on your computer, or (for Windows users) that you didn't specify the path to the ImageMagick binary in file conf.py, or that the path you specified is incorrect
+Traceback (most recent call last):
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\venv\Lib\site-packages\moviepy\video\VideoClip.py", line 1137, in __init__
+    subprocess_call(cmd, logger=None)
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\venv\Lib\site-packages\moviepy\tools.py", line 46, in subprocess_call
+    proc = sp.Popen(cmd, **popen_params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\subprocess.py", line 1026, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "C:\Python312\Lib\subprocess.py", line 1538, in _execute_child
+    hp, ht, pid, tid = _winapi.CreateProcess(executable, args,
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [WinError 2] The system cannot find the file specified
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\video_processing.py", line 193, in main
+    final_clip = overlay_subtitles(clip_path, subtitles)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\video_processing.py", line 72, in overlay_subtitles
+    text = mpy.TextClip(subtitles, font=font, fontsize=fontsize, color=color, bg_color='black')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\venv\Lib\site-packages\moviepy\video\VideoClip.py", line 1146, in __init__
+    raise IOError(error)
+OSError: MoviePy Error: creation of None failed because of the following error:
+
+[WinError 2] The system cannot find the file specified.
+
+.This error can be due to the fact that ImageMagick is not installed on your computer, or (for Windows users) that you didn't specify the path to the ImageMagick binary in file conf.py, or that the path you specified is incorrect

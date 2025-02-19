@@ -11,6 +11,8 @@ from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
 import openai
 
+print(os.environ['PATH'])
+
 # ---------- VIDEO SPLITTING ----------
 
 def split_video_fixed_duration(video_path, clip_duration):
@@ -166,7 +168,7 @@ def main(video_path, clip_duration, subtitle_file, api_key):
     logging.basicConfig(filename='video_processing.log', level=logging.INFO,
                         format='%(asctime)s - %(levelname)s - %(message)s')
     try:
-        # Check for FFmpeg first
+    # Check for FFmpeg first
         if not check_ffmpeg():
             return
 
