@@ -5,7 +5,7 @@ import logging
 import argparse
 import subprocess
 import scenedetect
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+import moviepy.editor as mpy
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -45,7 +45,7 @@ def split_video_scene_detection(video_path, threshold=30):
     # For simplicity, we assume a function 'detect_scenes' returns a list of (start, end) times in seconds.
     scene_list = []  # Replace with actual scene detection code or API call
     # For demonstration, let’s assume one scene covering the entire video:
-    video = VideoFileClip(video_path)
+    video = mpy.VideoFileClip(video_path)
     scene_list.append((0, video.duration))
     clip_paths = []
     for i, (start_time, end_time) in enumerate(scene_list):
@@ -65,18 +65,18 @@ def extract_subtitles_from_srt(srt_file):
 
 def overlay_subtitles(video_file, subtitles, font='Arial', fontsize=24, color='white', position='bottom', animation=False):
     """Overlays subtitles on the video clip using MoviePy."""
-    video = VideoFileClip(video_file)
+    video = mpy.VideoFileClip(video_file)
     # Create a TextClip for subtitles (this example places the entire subtitle text over the video)
-    text_clip = TextClip(subtitles, font=font, fontsize=fontsize, color=color, bg_color='black')
-    text_clip = text_clip.set_pos(position).set_duration(video.duration)
+    text = mpy.TextClip(subtitles, font=font, fontsize=fontsize, color=color, bg_color='black')
+    text = text.set_pos(position).set_duration(video.duration)
 
     # Optional animated effects (placeholder - replace with actual effect if needed)
     if animation:
         # e.g., text_clip = text_clip.fx(your_animation_effect)
         pass
 
-    final_clip = CompositeVideoClip([video, text_clip])
-    return final_clip
+    final = mpy.CompositeVideoClip([video, text])
+    return final
 
 # ---------- TITLE GENERATION ----------
 
@@ -107,14 +107,9 @@ def generate_title_heuristic(transcript):
 
 # ---------- YOUTUBE UPLOADING ----------
 
-def authenticate_youtube_api(client_secrets_file):
-    """Authenticates with the YouTube API using OAuth2."""
-    flow = InstalledAppFlow.from_client_secrets_file(
-        client_secrets_file,
-        scopes=['https://www.googleapis.com/auth/youtube.upload']
-    )
-    credentials = flow.run_local_server(port=0)
-    youtube = build('youtube', 'v3', credentials=credentials)
+def authenticate_youtube_api(api_key):
+    """Authenticates with the YouTube API using an API key."""
+    youtube = build('youtube', 'v3', developerKey=api_key)
     return youtube
 
 def upload_to_youtube(youtube, video_file, title, description, category='22', privacy_status='public'):
@@ -155,11 +150,26 @@ def transcribe_video(video_file):
 
 # ---------- MAIN PROCESSING FUNCTION ----------
 
-def main(video_path, clip_duration, subtitle_file, api_key, client_secrets_file):
+def check_ffmpeg():
+    """Check if FFmpeg is available in the system."""
+    try:
+        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return True
+    except FileNotFoundError:
+        print("Error: FFmpeg is not installed or not in PATH")
+        print("Please install FFmpeg from https://ffmpeg.org/download.html")
+        print("And add it to your system PATH")
+        return False
+
+def main(video_path, clip_duration, subtitle_file, api_key):
     """Orchestrates the video processing pipeline."""
     logging.basicConfig(filename='video_processing.log', level=logging.INFO,
                         format='%(asctime)s - %(levelname)s - %(message)s')
     try:
+        # Check for FFmpeg first
+        if not check_ffmpeg():
+            return
+
         # Step 1: Split video
         if clip_duration > 0:
             print("Splitting video by fixed duration...")
@@ -168,11 +178,8 @@ def main(video_path, clip_duration, subtitle_file, api_key, client_secrets_file)
             print("Splitting video by scene detection...")
             clip_paths = split_video_scene_detection(video_path)
 
-        # Step 2: Authenticate YouTube API if client_secrets_file is provided
-        youtube = None
-        if client_secrets_file:
-            print("Authenticating with YouTube API...")
-            youtube = authenticate_youtube_api(client_secrets_file)
+        # Step 2: Authenticate YouTube API
+        youtube = authenticate_youtube_api(api_key)
 
         # Process each clip
         for clip_path in clip_paths:
@@ -188,19 +195,13 @@ def main(video_path, clip_duration, subtitle_file, api_key, client_secrets_file)
             # Step 4: Generate title
             print(f"Transcribing {clip_path} for title generation...")
             transcript = transcribe_video(clip_path)
-            if api_key:
-                title = generate_title_with_gpt4(transcript, api_key)
-            else:
-                title = generate_title_heuristic(transcript)
+            title = generate_title_with_gpt4(transcript, api_key)
             print(f"Generated title: {title}")
 
-            # Step 5: Upload to YouTube if authenticated
-            if youtube:
-                print(f"Uploading {output_path} to YouTube...")
-                upload_to_youtube(youtube, output_path, title, "Short clip from original video")
-                logging.info(f"Processed and uploaded {clip_path} with title: {title}")
-            else:
-                print(f"Skipping upload for {output_path} as YouTube authentication is not provided.")
+            # Step 5: Upload to YouTube
+            print(f"Uploading {output_path} to YouTube...")
+            upload_to_youtube(youtube, output_path, title, "Short clip from original video")
+            logging.info(f"Processed and uploaded {clip_path} with title: {title}")
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)
         print("An error occurred. Check the log for details.")
@@ -209,13 +210,11 @@ def main(video_path, clip_duration, subtitle_file, api_key, client_secrets_file)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Automated Video Processing and YouTube Upload")
-    parser.add_argument("video_path", help="Path to the input video file")
+    parser.add_argument("--video_path", required=True, help="Path to the input video file")
     parser.add_argument("--clip_duration", type=int, default=30,
                         help="Duration (in seconds) for fixed clip splitting. Set to 0 to use scene detection.")
     parser.add_argument("--subtitle_file", help="Path to the subtitle SRT file", default=None)
-    parser.add_argument("--api_key", help="OpenAI API key for GPT-4 title generation", default=None)
-    parser.add_argument("--client_secrets_file", help="Path to YouTube API client secrets JSON file",
-                        default="client_secrets.json")
+    parser.add_argument("--api_key", help="API key for GPT-4 title generation and YouTube upload", required=True)
     args = parser.parse_args()
 
-    main(args.video_path, args.clip_duration, args.subtitle_file, args.api_key, args.client_secrets_file)
+    main(args.video_path, args.clip_duration, args.subtitle_file, args.api_key)

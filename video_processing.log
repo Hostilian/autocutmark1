@@ -1,0 +1,40 @@
+2025-02-19 15:23:37,479 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-19 15:23:37,522 - ERROR - An error occurred: MoviePy error: the file clip_0.mp4 could not be found!
+Please check that you entered the correct path.
+Traceback (most recent call last):
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\video_processing.py", line 176, in main
+    final_clip = overlay_subtitles(clip_path, subtitles)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\video_processing.py", line 68, in overlay_subtitles
+    video = mpy.VideoFileClip(video_file)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\venv\Lib\site-packages\moviepy\video\io\VideoFileClip.py", line 88, in __init__
+    self.reader = FFMPEG_VideoReader(filename, pix_fmt=pix_fmt,
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\venv\Lib\site-packages\moviepy\video\io\ffmpeg_reader.py", line 35, in __init__
+    infos = ffmpeg_parse_infos(filename, print_infos, check_duration,
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\venv\Lib\site-packages\moviepy\video\io\ffmpeg_reader.py", line 270, in ffmpeg_parse_infos
+    raise IOError(("MoviePy error: the file %s could not be found!\n"
+OSError: MoviePy error: the file clip_0.mp4 could not be found!
+Please check that you entered the correct path.
+2025-02-19 15:23:47,141 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-02-19 15:23:47,176 - ERROR - An error occurred: MoviePy error: the file clip_0.mp4 could not be found!
+Please check that you entered the correct path.
+Traceback (most recent call last):
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\video_processing.py", line 176, in main
+    final_clip = overlay_subtitles(clip_path, subtitles)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\video_processing.py", line 68, in overlay_subtitles
+    video = mpy.VideoFileClip(video_file)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\venv\Lib\site-packages\moviepy\video\io\VideoFileClip.py", line 88, in __init__
+    self.reader = FFMPEG_VideoReader(filename, pix_fmt=pix_fmt,
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\venv\Lib\site-packages\moviepy\video\io\ffmpeg_reader.py", line 35, in __init__
+    infos = ffmpeg_parse_infos(filename, print_infos, check_duration,
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Hostilian\OneDrive\Documents\GitHub\autocutmark1\venv\Lib\site-packages\moviepy\video\io\ffmpeg_reader.py", line 270, in ffmpeg_parse_infos
+    raise IOError(("MoviePy error: the file %s could not be found!\n"
+OSError: MoviePy error: the file clip_0.mp4 could not be found!
+Please check that you entered the correct path.
