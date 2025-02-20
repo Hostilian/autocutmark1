@@ -22,6 +22,9 @@ jobs:
   process-and-upload:
     name: Process Video and Upload Shorts
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     timeout-minutes: 60
 
     steps:
@@ -63,10 +66,12 @@ jobs:
         YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       run: |
         source ${{ env.VENV_PATH }}/bin/activate
+        echo "Starting video processing..."
         python video_processing.py \
-          --video_path "${{ github.event.inputs.video_path || 'D:/MW_TVS/Snatch (2000) [BluRay] [1080p] [YTS.AM]/Snatch.2000.1080p.BluRay.x264-[YTS.AM].mp4' }}" \
-          --clip_duration ${{ github.event.inputs.clip_duration || '50' }} \
+          --video_path "${{ github.event.inputs.video_path }}" \
+          --clip_duration ${{ github.event.inputs.clip_duration }} \
           --api_key "${{ secrets.YOUTUBE_API_KEY }}"
+        echo "::set-output name=duration::$(date +%s)"
 
     - name: 📤 Upload Artifacts
       if: always()
@@ -77,18 +82,21 @@ jobs:
           video_processing.log
           clip_*.mp4
         retention-days: 1
+        compression-level: 6
+        overwrite: true
 
     - name: 📱 Send Notification
       if: always()
-      uses: appleboy/telegram-action@v0.1.1
+      uses: appleboy/telegram-action@v1
       with:
         to: ${{ secrets.TELEGRAM_CHAT_ID }}
         token: ${{ secrets.TELEGRAM_TOKEN }}
+        format: markdown
         message: |
-          🎬 YouTube Shorts Upload Status:
-          Repository: ${{ github.repository }}
-          Branch: ${{ github.ref_name }}
-          Status: ${{ job.status }}
-          Duration: ${{ steps.process-video.outputs.duration }}s
+          *🎬 YouTube Shorts Upload Status*
+          Repository: `${{ github.repository }}`
+          Branch: `${{ github.ref_name }}`
+          Status: `${{ job.status }}`
+          Duration: `${{ steps.process-video.outputs.duration }}s`
           
           ${{ job.status == 'success' && '✅ All clips processed and uploaded successfully!' || '❌ Process failed. Check logs for details.' }}
