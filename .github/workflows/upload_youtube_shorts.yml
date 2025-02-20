@@ -82,8 +82,6 @@ jobs:
           video_processing.log
           clip_*.mp4
         retention-days: 1
-        compression-level: 6
-        overwrite: true
 
     - name: 📱 Send Notification
       if: always()
