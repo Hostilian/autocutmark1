@@ -67,7 +67,7 @@ jobs:
         python video_processing.py \
           --video_path "${{ github.event.inputs.video_path }}" \
           --clip_duration "${{ github.event.inputs.clip_duration }}" \
-          --api_key "${{ github.event.inputs.api_key }}"
+          --api_key "${{ secrets.GEMINI_API_KEY }}"
         echo "::set-output name=duration::$(date +%s)"
 
     - name: 📤 Upload Artifacts
