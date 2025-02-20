@@ -227,8 +227,8 @@ def main(video_path, clip_duration, api_key):
             except Exception as e:  # Specify the exception type
                 logging.error(f"Failed to clean up {path}: {e}")
 
-    except Exception as e:
-        logging.error(f"An error occurred: {e}", exc_info=True)
+    except Exception:
+        logging.error("An error occurred.", exc_info=True)
         print("An error occurred. Check the log for details.")
 
 
