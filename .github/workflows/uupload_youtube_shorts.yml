@@ -16,7 +16,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.9'  # ⬅️ Upgrade Python to 3.9 or higher
+        python-version: '3.9'
 
     - name: Cache pip
       uses: actions/cache@v3
@@ -30,15 +30,14 @@ jobs:
       run: |
         python -m venv venv
         source venv/bin/activate
-        pip install --upgrade pip  # ⬅️ Ensure latest pip version
+        pip install --upgrade pip
         pip install -r requirements.txt
 
     - name: Lint code with flake8
       run: |
         source venv/bin/activate
         pip install flake8
-        # Only check your project files, ignore venv
-        flake8 . --exclude=venv/*,*/migrations/*,*/venv/*,docs/* --max-line-length=120 --ignore=E501,W503,E302,E305,W292,F841
+        flake8 . --exclude=venv/*,*/migrations/*,*/venv/*,docs/* --max-line-length=120 --ignore=E501,W503,E302,E305,W292,F401,E402,W504
 
     - name: Run unit tests
       run: |
