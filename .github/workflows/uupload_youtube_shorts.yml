@@ -16,7 +16,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.8'
+        python-version: '3.9'  # ⬅️ Upgrade Python to 3.9 or higher
 
     - name: Cache pip
       uses: actions/cache@v3
@@ -30,7 +30,7 @@ jobs:
       run: |
         python -m venv venv
         source venv/bin/activate
-
+        pip install --upgrade pip  # ⬅️ Ensure latest pip version
         pip install -r requirements.txt
 
     - name: Lint code with flake8
