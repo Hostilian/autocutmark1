@@ -38,7 +38,7 @@ jobs:
         pip install --upgrade pip
         pip install opencv-python-headless  # Using headless version for CI environment
         pip install -r requirements.txt
-        pip install google-api-python-client  # Ensure google-api-python-client is installed
+        pip install google-api-python-client google-auth google-auth-oauthlib google-auth-httplib2  # Ensure google-api-python-client and auth libraries are installed
 
     - name: Lint code with flake8
       run: |

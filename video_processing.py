@@ -6,7 +6,9 @@ import argparse
 import subprocess
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-import openai
+import google.auth
+from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 import numpy as np
 from multiprocessing import Pool
 
@@ -117,16 +119,21 @@ def split_video_fixed_duration(video_path, clip_duration):
         raise
 
 
-def generate_title_with_gpt4(transcript, api_key):
-    """Generates a title using GPT-4 based on the transcript."""
-    openai.api_key = api_key
-    response = openai.Completion.create(
-        engine="text-davinci-003",  # Adjust if using a GPT-4 engine
-        prompt=f"Generate a short, engaging title for a video with the following transcript:\n\n{transcript}",
-        max_tokens=50,
-        temperature=0.7,
+def generate_title_with_gemini(transcript, api_key):
+    """Generates a title using Google's Gemini API based on the transcript."""
+    credentials = service_account.Credentials.from_service_account_file(api_key)
+    scoped_credentials = credentials.with_scopes(['https://www.googleapis.com/auth/cloud-platform'])
+    authed_session = google.auth.transport.requests.AuthorizedSession(scoped_credentials)
+
+    response = authed_session.post(
+        'https://gemini.googleapis.com/v1/projects/YOUR_PROJECT_ID/locations/global/models/YOUR_MODEL_ID:predict',
+        json={
+            'instances': [{'content': transcript}],
+            'parameters': {'maxOutputTokens': 50, 'temperature': 0.7}
+        }
     )
-    title = response.choices[0].text.strip()
+    response_data = response.json()
+    title = response_data['predictions'][0]['content']
     return title
 
 
@@ -215,7 +222,7 @@ def main(video_path, clip_duration, api_key):
         for i, clip_path in enumerate(processed_clips):
             print(f"\nUploading clip {i+1}/{len(processed_clips)}...")
             transcript = transcribe_video(clip_path)
-            title = generate_title_with_gpt4(transcript, api_key)
+            title = generate_title_with_gemini(transcript, api_key)
             description = f"Auto-generated clip from video\nTranscript:\n{transcript}"
             upload_to_youtube(youtube, clip_path, title, description)
 
@@ -250,7 +257,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--api_key",
         required=True,
-        help="API key for GPT-4 title generation and YouTube upload"
+        help="API key for Gemini title generation and YouTube upload"
     )
 
     args = parser.parse_args()
