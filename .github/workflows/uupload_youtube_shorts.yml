@@ -57,25 +57,3 @@ jobs:
       with:
         name: logs
         path: video_processing.log
-
-    - name: Notify on failure
-      if: failure()
-      uses: appleboy/telegram-action@v1.6.0
-      with:
-        to: ${{ secrets.TELEGRAM_CHAT_ID }}
-        token: ${{ secrets.TELEGRAM_TOKEN }}
-        format: markdown
-        message: |
-          *YouTube Shorts Upload Failed*
-          Check the logs for details.
-
-    - name: Notify on success
-      if: success()
-      uses: appleboy/telegram-action@v1.6.0
-      with:
-        to: ${{ secrets.TELEGRAM_CHAT_ID }}
-        token: ${{ secrets.TELEGRAM_TOKEN }}
-        format: markdown
-        message: |
-          *YouTube Shorts Upload Succeeded*
-          The workflow has completed successfully.
