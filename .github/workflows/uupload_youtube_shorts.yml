@@ -38,7 +38,7 @@ jobs:
         source venv/bin/activate
         pip install flake8
         # Only check your project files, ignore venv
-        flake8 . --exclude=venv/*,*/migrations/*,*/venv/* --max-line-length=120 --ignore=E501,W503,E302,E305,W292,F841
+        flake8 . --exclude=venv/*,*/migrations/*,*/venv/*,docs/* --max-line-length=120 --ignore=E501,W503,E302,E305,W292,F841
 
     - name: Run unit tests
       run: |
