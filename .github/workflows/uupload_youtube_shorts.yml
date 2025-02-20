@@ -18,6 +18,11 @@ jobs:
       with:
         python-version: '3.9'
 
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgl1-mesa-glx
+
     - name: Cache pip
       uses: actions/cache@v3
       with:
@@ -31,6 +36,7 @@ jobs:
         python -m venv venv
         source venv/bin/activate
         pip install --upgrade pip
+        pip install opencv-python-headless  # Using headless version for CI environment
         pip install -r requirements.txt
 
     - name: Lint code with flake8
