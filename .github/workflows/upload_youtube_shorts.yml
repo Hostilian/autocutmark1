@@ -31,7 +31,7 @@ jobs:
     - name: 📥 Checkout Repository
       uses: actions/checkout@v4
 
-    - name: 🐍🐍 Setup Python
+    - name: 🐍 Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
@@ -67,7 +67,7 @@ jobs:
         echo "Starting video processing..."
         python video_processing.py \
           --video_path "${{ github.event.inputs.video_path }}" \
-          --clip_duration ${{ github.event.inputs.clip_duration }} \
+          --clip_duration ${{ github.event.inputs.clip_duration }}" \
           --api_key "${{ github.event.inputs.api_key }}"
         echo "::set-output name=duration::$(date +%s)"
 
