@@ -8,7 +8,6 @@ import scenedetect
 import moviepy.editor as mpy
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from google_auth_oauthlib.flow import InstalledAppFlow
 import openai
 import numpy as np
 from multiprocessing import Pool
@@ -98,7 +97,7 @@ def split_video_fixed_duration(video_path, clip_duration):
 
             print(f"Running FFmpeg command...")
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            
+
             if result.returncode == 0:
                 print(f"Created {output_path}")
                 clip_paths.append(output_path)
@@ -238,3 +237,101 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     main(args.video_path, args.clip_duration, args.api_key)
+
+# Remove unused imports
+from moviepy.editor import VideoFileClip
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+import argparse
+import logging
+
+
+# Add two blank lines before classes and functions
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('video_processing.log'),
+            logging.StreamHandler()
+        ]
+    )
+
+
+def create_youtube_service(api_key):
+    try:
+        return build('youtube', 'v3', developerKey=api_key)
+    except Exception as e:
+        logging.error(f"Error creating YouTube service: {e}")
+        return None
+
+
+def process_video(video_path, clip_duration, output_dir='clips'):
+    try:
+        video = VideoFileClip(video_path)
+        clips = []
+
+        for start_time in range(0, int(video.duration), int(clip_duration)):
+            end_time = min(start_time + int(clip_duration), video.duration)
+            clip = video.subclip(start_time, end_time)
+            clips.append((start_time, clip))
+
+        return clips
+    except Exception as e:
+        logging.error(f"Error processing video: {e}")
+        return []
+
+
+def upload_to_youtube(youtube, clip, title, description):
+    try:
+        request = youtube.videos().insert(
+            part='snippet,status',
+            body={
+                'snippet': {
+                    'title': title,
+                    'description': description
+                },
+                'status': {
+                    'privacyStatus': 'private'
+                }
+            },
+            media_body=clip
+        )
+        response = request.execute()
+        return response
+    except Exception as e:
+        logging.error(f"Error uploading to YouTube: {e}")
+        return None
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--video_path', required=True)
+    parser.add_argument('--clip_duration', type=int, default=50)
+    parser.add_argument('--api_key', required=True)
+    args = parser.parse_args()
+
+    setup_logging()
+    youtube = create_youtube_service(args.api_key)
+
+    if youtube is None:
+        logging.error("Failed to create YouTube service")
+        return
+
+    try:
+        clips = process_video(args.video_path, args.clip_duration)
+        for i, (start_time, clip) in enumerate(clips):
+            title = f"Clip {i+1} - Starting at {start_time}s"
+            description = f"Automatically generated clip from video"
+            result = upload_to_youtube(youtube, clip, title, description)
+            if result:
+                logging.info(f"Successfully uploaded clip {i+1}")
+            else:
+                logging.error(f"Failed to upload clip {i+1}")
+    except Exception as e:
+        logging.error(f"Error in main process: {e}")
+
+
+if __name__ == '__main__':
+    main()
