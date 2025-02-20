@@ -26,10 +26,10 @@ jobs:
 
     steps:
     - name: 📥 Checkout Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: 🐍 Setup Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
         cache: 'pip'
@@ -58,6 +58,7 @@ jobs:
         pytest -v
 
     - name: 🎬 Process Video
+      id: process-video
       env:
         YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       run: |
@@ -69,7 +70,7 @@ jobs:
 
     - name: 📤 Upload Artifacts
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: process-artifacts
         path: |
