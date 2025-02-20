@@ -17,12 +17,10 @@ from multiprocessing import Pool
 # import moviepy.editor as mpy
 # from moviepy.editor import VideoFileClip
 
-
 # Two blank lines before functions
 def is_dark_frame(frame, threshold=30):
     """Check if frame is too dark based on average pixel intensity."""
     return cv2.mean(frame)[0] < threshold
-
 
 def analyze_scene_content(args):
     """Analyze scene content with minimal processing."""
@@ -56,9 +54,8 @@ def analyze_scene_content(args):
         logging.error(f"Error in analyze_scene_content: {e}")
         return (start_time, 0)
 
-
 def split_video_fixed_duration(video_path, clip_duration):
-    """Split video into 50 clips with high quality."""
+    """Split video into 2 clips with high quality."""
     try:
         print("Opening video file...")
         video = cv2.VideoCapture(video_path)
@@ -76,7 +73,7 @@ def split_video_fixed_duration(video_path, clip_duration):
             for time in range(
                 int(start_offset),
                 int(total_duration - end_offset - clip_duration),
-                30
+                int((total_duration - start_offset - end_offset - clip_duration) / 2)
             )
         ]
 
@@ -85,13 +82,13 @@ def split_video_fixed_duration(video_path, clip_duration):
             results = pool.map(analyze_scene_content, sample_points)
 
         results.sort(key=lambda x: x[1], reverse=True)
-        best_points = results[:50]
+        best_points = results[:2]
         best_points.sort(key=lambda x: x[0])
 
         clip_paths = []
         for i, (start_time, score) in enumerate(best_points):
             output_path = f"clip_{i}.mp4"
-            print(f"Extracting clip {i+1}/50 from {start_time:.2f}s")
+            print(f"Extracting clip {i+1}/2 from {start_time:.2f}s")
 
             cmd = (
                 f'ffmpeg -y -ss {start_time} -i "{video_path}" -t {clip_duration} '
@@ -118,7 +115,6 @@ def split_video_fixed_duration(video_path, clip_duration):
         logging.error(f"Error in split_video_fixed_duration: {e}", exc_info=True)
         raise
 
-
 def generate_title_with_gemini(transcript, api_key):
     """Generates a title using Google's Gemini API based on the transcript."""
     credentials = service_account.Credentials.from_service_account_file(api_key)
@@ -136,7 +132,6 @@ def generate_title_with_gemini(transcript, api_key):
     title = response_data['predictions'][0]['content']
     return title
 
-
 def extract_keywords(text):
     """A dummy keyword extraction function.
        Replace with your own keyword extraction logic."""
@@ -144,19 +139,16 @@ def extract_keywords(text):
     # Return the first 3 words as keywords for demonstration
     return words[:3]
 
-
 def generate_title_heuristic(transcript):
     """Generates a title using heuristic rules (e.g., keywords)."""
     keywords = extract_keywords(transcript)
     title = " | ".join(keywords)
     return title
 
-
 def authenticate_youtube_api(api_key):
     """Authenticates with the YouTube API using an API key."""
     youtube = build('youtube', 'v3', developerKey=api_key)
     return youtube
-
 
 def upload_to_youtube(youtube, video_file, title, description, category='22', privacy_status='public'):
     """Uploads the video to YouTube."""
@@ -184,7 +176,6 @@ def upload_to_youtube(youtube, video_file, title, description, category='22', pr
     print("Upload complete!")
     return response
 
-
 def transcribe_video(video_file):
     """
     Dummy transcription function.
@@ -192,7 +183,6 @@ def transcribe_video(video_file):
     """
     # For demonstration, we return a fixed string.
     return "This is a sample transcript of the video content."
-
 
 def check_ffmpeg():
     """Check if FFmpeg is available in the system."""
@@ -204,7 +194,6 @@ def check_ffmpeg():
         print("Please install FFmpeg from https://ffmpeg.org/download.html")
         print("And add it to your system PATH")
         return False
-
 
 def main(video_path, clip_duration, api_key):
     """Orchestrates the video processing pipeline."""
@@ -237,7 +226,6 @@ def main(video_path, clip_duration, api_key):
     except Exception:
         logging.error("An error occurred.", exc_info=True)
         print("An error occurred. Check the log for details.")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
