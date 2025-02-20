@@ -112,8 +112,8 @@ def split_video_fixed_duration(video_path, clip_duration):
         video.release()
         return clip_paths
 
-    except Exception:
-        logging.error(f"Error in split_video_fixed_duration", exc_info=True)
+    except Exception as e:
+        logging.error("Error in split_video_fixed_duration", exc_info=True)
         raise
 
 
