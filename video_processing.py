@@ -4,14 +4,16 @@ import cv2
 import logging
 import argparse
 import subprocess
-import scenedetect
-import moviepy.editor as mpy
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 import openai
 import numpy as np
 from multiprocessing import Pool
-from moviepy.editor import VideoFileClip
+
+# Remove unused imports
+# import scenedetect
+# import moviepy.editor as mpy
+# from moviepy.editor import VideoFileClip
 
 
 # Two blank lines before functions
@@ -44,7 +46,7 @@ def analyze_scene_content(args):
             frame_scores.append(score)
 
             video.set(cv2.CAP_PROP_POS_FRAMES,
-                     video.get(cv2.CAP_PROP_POS_FRAMES) + 30)
+                     video.get(cv2.CAP_PROP_POS_FRAMES) + 30)  # Fix indentation
 
         video.release()
         return (start_time, np.mean(frame_scores) if frame_scores else 0)
@@ -222,8 +224,8 @@ def main(video_path, clip_duration, api_key):
             try:
                 os.remove(path)
                 print(f"Cleaned up {path}")
-            except:
-                pass
+            except Exception as e:  # Specify the exception type
+                logging.error(f"Failed to clean up {path}: {e}")
 
     except Exception as e:
         logging.error(f"An error occurred: {e}", exc_info=True)

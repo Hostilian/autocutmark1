@@ -1,9 +1,15 @@
 [flake8]
+max-line-length = 120
 exclude =
     .git,
     __pycache__,
     venv,
     .venv,
     */migrations/*
-max-line-length = 120
-extend-ignore = E203
+extend-ignore =
+    # E203: Whitespace before ':' (conflicts with black)
+    E203,
+    # E128: continuation line under-indented for visual indent
+    E128
+per-file-ignores =
+    __init__.py:F401
