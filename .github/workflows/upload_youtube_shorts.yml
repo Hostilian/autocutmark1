@@ -25,7 +25,6 @@ jobs:
     permissions:
       contents: read
       packages: read
-    timeout-minutes: 60
 
     steps:
     - name: 📥 Checkout Repository
@@ -67,7 +66,7 @@ jobs:
         echo "Starting video processing..."
         python video_processing.py \
           --video_path "${{ github.event.inputs.video_path }}" \
-          --clip_duration ${{ github.event.inputs.clip_duration }}" \
+          --clip_duration "${{ github.event.inputs.clip_duration }}" \
           --api_key "${{ github.event.inputs.api_key }}"
         echo "::set-output name=duration::$(date +%s)"
 
