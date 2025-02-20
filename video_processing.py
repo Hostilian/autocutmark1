@@ -113,7 +113,7 @@ def split_video_fixed_duration(video_path, clip_duration):
         return clip_paths
 
     except Exception as e:
-        logging.error("Error in split_video_fixed_duration", exc_info=True)
+        logging.error(f"Error in split_video_fixed_duration: {e}", exc_info=True)
         raise
 
 
@@ -225,7 +225,7 @@ def main(video_path, clip_duration, api_key):
                 os.remove(path)
                 print(f"Cleaned up {path}")
             except Exception:  # Specify the exception type
-                logging.error(f"Failed to clean up {path}")
+                logging.error(f"Failed to clean up {path}", exc_info=True)
 
     except Exception:
         logging.error("An error occurred.", exc_info=True)
