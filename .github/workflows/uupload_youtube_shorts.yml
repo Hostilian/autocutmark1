@@ -64,7 +64,10 @@ jobs:
       with:
         to: ${{ secrets.TELEGRAM_CHAT_ID }}
         token: ${{ secrets.TELEGRAM_TOKEN }}
-        message: "The YouTube Shorts upload workflow has failed. Check the logs for details."
+        format: markdown
+        message: |
+          *YouTube Shorts Upload Failed*
+          Check the logs for details.
 
     - name: Notify on success
       if: success()
@@ -72,4 +75,7 @@ jobs:
       with:
         to: ${{ secrets.TELEGRAM_CHAT_ID }}
         token: ${{ secrets.TELEGRAM_TOKEN }}
-        message: "The YouTube Shorts upload workflow has completed successfully."
+        format: markdown
+        message: |
+          *YouTube Shorts Upload Succeeded*
+          The workflow has completed successfully.
