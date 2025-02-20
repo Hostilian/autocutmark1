@@ -1,4 +1,4 @@
-name: Upload YouTube Shortss
+name: Upload YouTube Shorts
 
 on:
   push:
