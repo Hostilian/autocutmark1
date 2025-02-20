@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       video_path:
-        description: 'Path to the video file'
+        description: 'Path to video file'
         required: true
       clip_duration:
         description: 'Duration of each clip in seconds'
@@ -80,19 +80,3 @@ jobs:
           video_processing.log
           clip_*.mp4
         retention-days: 1
-
-    - name: 📱 Send Notification
-      if: always()
-      uses: appleboy/telegram-action@v1.6.0
-      with:
-        to: ${{ secrets.TELEGRAM_CHAT_ID }}
-        token: ${{ secrets.TELEGRAM_TOKEN }}
-        format: markdown
-        message: |
-          *🎬 YouTube Shorts Upload Status*
-          Repository: `${{ github.repository }}`
-          Branch: `${{ github.ref_name }}`
-          Status: `${{ job.status }}`
-          Duration: `${{ steps.process-video.outputs.duration }}s`
-          
-          ${{ job.status == 'success' && '✅ All clips processed and uploaded successfully!' || '❌ Process failed. Check logs for details.' }}
