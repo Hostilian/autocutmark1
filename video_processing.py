@@ -224,8 +224,8 @@ def main(video_path, clip_duration, api_key):
             try:
                 os.remove(path)
                 print(f"Cleaned up {path}")
-            except Exception as e:  # Specify the exception type
-                logging.error(f"Failed to clean up {path}: {e}")
+            except Exception:  # Specify the exception type
+                logging.error(f"Failed to clean up {path}")
 
     except Exception:
         logging.error("An error occurred.", exc_info=True)
