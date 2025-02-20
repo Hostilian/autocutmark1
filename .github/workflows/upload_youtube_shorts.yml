@@ -1,18 +1,18 @@
 name: YouTube Shorts Uploader
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
       video_path:
-        description: 'Path to video file'
+        description: 'Path to the video file'
         required: true
-        default: 'D:/MW_TVS/Snatch (2000) [BluRay] [1080p] [YTS.AM]/Snatch.2000.1080p.BluRay.x264-[YTS.AM].mp4'
       clip_duration:
         description: 'Duration of each clip in seconds'
         required: true
         default: '50'
+      api_key:
+        description: 'YouTube API Key'
+        required: true
 
 env:
   PYTHON_VERSION: '3.8'
@@ -62,15 +62,13 @@ jobs:
 
     - name: 🎬 Process Video
       id: process-video
-      env:
-        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       run: |
         source ${{ env.VENV_PATH }}/bin/activate
         echo "Starting video processing..."
         python video_processing.py \
           --video_path "${{ github.event.inputs.video_path }}" \
           --clip_duration ${{ github.event.inputs.clip_duration }} \
-          --api_key "${{ secrets.YOUTUBE_API_KEY }}"
+          --api_key "${{ github.event.inputs.api_key }}"
         echo "::set-output name=duration::$(date +%s)"
 
     - name: 📤 Upload Artifacts
@@ -95,5 +93,6 @@ jobs:
           Repository: `${{ github.repository }}`
           Branch: `${{ github.ref_name }}`
           Status: `${{ job.status }}`
+          Duration: `${{ steps.process-video.outputs.duration }}s`
           
           ${{ job.status == 'success' && '✅ All clips processed and uploaded successfully!' || '❌ Process failed. Check logs for details.' }}
